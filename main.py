@@ -4,12 +4,11 @@ import generateAvroSchema
 from deepdiff import DeepDiff
 from avro.datafile import DataFileWriter, DataFileReader
 from avro.io import DatumWriter, DatumReader
-from avro import datafile, io
 
 
 def main():
     # Counter for unique test file name
-    counter = 4
+    counter = 0
 
     # Generate avro schema
     check_file = generateAvroSchema.main(counter)
@@ -23,46 +22,43 @@ def main():
     )
 
     ## Serialise json file by opening the existing Avro file in append mode
-    try:
-        # Configure the Avro writer with Snappy or Zstandard codec
-        avro_writer = datafile.DataFileWriter(
-            open(f"test{counter}/schema{counter}_codec.avro", "wb"),
-            io.DatumWriter(),
-            schema,
-            codec="snappy",
-        )
+    codec_type = ["null", "bzip2", "snappy", "zstandard"]
+    for ct in codec_type:
+        try:
+            writer = DataFileWriter(
+                open(f"test{counter}/schema_{ct}_codec.avro", "wb"),
+                DatumWriter(),
+                schema,
+                codec=ct,
+            )
+            # Open the JSON file and load its contents
+            with open("data.json", "r") as json_file:
+                json_data = json.load(json_file)
+                writer.append(json_data)
+            writer.close()
 
-        # Open the JSON file and load its contents
-        with open("data.json", "r") as json_file:
-            json_data = json.load(json_file)
-            avro_writer.append(json_data)
-        avro_writer.close()
+            print("Serialization and AVRO file write completed successfully")
 
-        print("Serialization and AVRO file write completed successfully")
-
-    except:
-        raise Exception("Failed to generate avro file")
+        except:
+            raise Exception("Failed to generate avro file")
 
     ## Deserialise avro file
     schema = avro.schema.parse(
         open(f"test{counter}/schema{counter}_codec.avsc", "rb").read()
     )
     try:
-        # Configure the Avro reader with Snappy or Zstandard codec
-        avro_reader = datafile.DataFileReader(
-            open(f"test{counter}/schema{counter}_codec.avro", "rb"),
-            io.DatumReader(schema),
-            codec="snappy",  # Change the codec here to 'snappy' or 'zstandard'
+        reader = DataFileReader(
+            open(f"test{counter}/schema_null_codec.avro", "rb"), DatumReader(schema)
         )
 
         # Write deserialized records to a JSON file
         with open(f"test{counter}/deserialized_data.json", "w") as json_file:
-            for record in avro_reader:
+            for record in reader:
                 # Write each record as a separate JSON object
                 json.dump(record, json_file)
                 json_file.write("\n")  # Add a new line after each JSON object
 
-        avro_reader.close()
+        reader.close()
 
         print("Deserialization and JSON file write completed successfully")
 
@@ -70,7 +66,7 @@ def main():
         raise Exception("Failed to deserialize Avro file")
 
     ## Compare with original json file
-    with open(f"test{counter}/data.json", "r") as orif:
+    with open(f"data.json", "r") as orif:
         original_data = json.load(orif)
         orif.close()
 
